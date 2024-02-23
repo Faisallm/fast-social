@@ -4,6 +4,9 @@ from fastapi.params import Body
 from pydantic import BaseModel
 from typing import Optional
 from random import randrange
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import time
 
 app = FastAPI()
 
@@ -18,6 +21,27 @@ class Post(BaseModel):
     # with a default value in schema
     published: bool = True
     #  fully optional field
+
+# code for connecting to db
+while True:
+    try:
+        # connecting to a postgres db
+        # RealDictCursor added inorder to get...
+        # column name.
+        conn = psycopg2.connect(host='localhost', database='fastapi-social', 
+                                user='postgres', password='Faisal',
+                                cursor_factory=RealDictCursor)
+        # allows us to execute sql statements
+        cur  = conn.cursor()
+        print("Database connection was successful!")
+        break
+
+    except Exception as error:
+        print("Connecting to Database Failed!")
+        print("Error: ", error)
+        # wait for 2 seconds before trying to reconnect
+        time.sleep(2)
+
 
 my_posts = [{"title": "Machine Learning", "content":  "Is a set of tools that tries to  \
              automate the intellectual tasks performed by humans", "id": 1},
@@ -47,21 +71,28 @@ def root():
 
 @app.get('/posts')
 def get_posts():
-    return {'data': my_posts}
+    cur.execute("""SELECT * FROM posts""")
+    posts = cur.fetchall()
+    print(posts)
+    return {'data': posts}
 
 
 # if we want to change the default status code...
 # we can add a status_code argument to the decorator...
 @app.post('/posts', status_code=status.HTTP_201_CREATED)
 def create_posts(post: Post):
-    # dict() is deprecated in base model.
-    # instead use model_dump
-    post_dict = post.model_dump()
-    # adding an id field
-    post_dict['id'] = randrange(0, 90000009)
-    my_posts.append(post_dict)
+    # inserting a new post in our sql database.
+    # %s allows for input sanitization.
+    # to prevent sql injection into our database.
+    cur.execute("""INSERT INTO posts (title, content, published) 
+                VALUES (%s, %s, %s) RETURNING * """, (post.title, post.content, post.published))
+    # to get that return value, we have to use cur.fetchone()
+    new_post = cur.fetchone()
+    # we have to commit the changes to the db
+    conn.commit()
+    print(new_post)
     
-    return {'data': post_dict}
+    return {'data': new_post}
 
 
 # we converted the id to an int in the parameters.
@@ -69,7 +100,8 @@ def create_posts(post: Post):
 # id is an integer.
 @app.get('/posts/{id}')
 def get_posts(id:int):
-    post = find_post(id)
+    cur.execute("""SELECT * FROM posts WHERE id = %s""", (str(id),))
+    post = cur.fetchone()
     if not post:
         # when the resource is not found
         # 404: Not Found
@@ -89,32 +121,34 @@ def get_posts(id:int):
 
 @app.delete("/posts/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_post(id:int):
+
+    cur.execute("""DELETE FROM posts WHERE id = %s RETURNING *""", (str(id),))
+    deleted_post = cur.fetchone()
+    # anytime, we change a database. commit to it.
+    print(deleted_post)
+    conn.commit()
     
-    post_index = find_post_index(id)
-    
-    if not post_index:
+    if not deleted_post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                             detail="Post Index not found")
+                             detail=f"post with id: {id} does not exist")
     
-    my_posts.pop(post_index)
-    # in the delete function, don't send any data back...
-    # just send a 204 response code.
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # we are almost done with all our crud operations
 @app.put("/posts/{id}")
 def update_post(id: int, post: Post):
-    post_index = find_post_index(id)
+
+    cur.execute("""UPDATE posts SET title = %s, content = %s, published = %s RETURNING *""", 
+                (post.title, post.content, post.published))
+    updated_post = cur.fetchone()
+    conn.commit()
     
-    if post_index == None:
+    if updated_post == None:
         # you raise exceptins, not return them
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                              detail="Post Index not found")
-    # the post.dict() method is deprecated
-    post_dict = post.model_dump()
-    post_dict['id'] = id
-    my_posts[post_index] = post_dict
-    return {"data": post_dict}
+    
+    return {"data": updated_post}
 
 # we are now at the end of our crud operation.
