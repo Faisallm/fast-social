@@ -18,7 +18,6 @@ class Post(BaseModel):
     # with a default value in schema
     published: bool = True
     #  fully optional field
-    rating: Optional[int] = None
 
 my_posts = [{"title": "Machine Learning", "content":  "Is a set of tools that tries to  \
              automate the intellectual tasks performed by humans", "id": 1},
@@ -118,3 +117,4 @@ def update_post(id: int, post: Post):
     my_posts[post_index] = post_dict
     return {"data": post_dict}
 
+# we are now at the end of our crud operation.
