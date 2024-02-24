@@ -17,6 +17,8 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+# pydantic is used for validating...
+# users input.
 
 # model/schema/blueprint/definition
 # we will be validating our user's input...
@@ -101,17 +103,26 @@ def get_posts(db: Session = Depends(get_db)):
 # if we want to change the default status code...
 # we can add a status_code argument to the decorator...
 @app.post('/posts', status_code=status.HTTP_201_CREATED)
-def create_posts(post: Post):
+def create_posts(post: Post, db: Session = Depends(get_db)):
     # inserting a new post in our sql database.
     # %s allows for input sanitization.
     # to prevent sql injection into our database.
-    cur.execute("""INSERT INTO posts (title, content, published) 
-                VALUES (%s, %s, %s) RETURNING * """, (post.title, post.content, post.published))
-    # to get that return value, we have to use cur.fetchone()
-    new_post = cur.fetchone()
-    # we have to commit the changes to the db
-    conn.commit()
-    print(new_post)
+    # cur.execute("""INSERT INTO posts (title, content, published) 
+    #             VALUES (%s, %s, %s) RETURNING * """, (post.title, post.content, post.published))
+    # # to get that return value, we have to use cur.fetchone()
+    # new_post = cur.fetchone()
+    # # we have to commit the changes to the db
+    # conn.commit()
+    # print(new_post)
+    # we can unpack our schema using **
+    # this is magic
+    new_post = models.Post(**post.model_dump())
+    # adding post and commiting to database.
+    db.add(new_post)
+    db.commit()
+    # to be able to retrieve the new_post
+    # similar to RETURNING *
+    db.refresh(new_post)
     
     return {'data': new_post}
 
@@ -120,9 +131,11 @@ def create_posts(post: Post):
 # it's also a way of making  sure that the provided...
 # id is an integer.
 @app.get('/posts/{id}')
-def get_posts(id:int):
-    cur.execute("""SELECT * FROM posts WHERE id = %s""", (str(id),))
-    post = cur.fetchone()
+def get_posts(id:int, db: Session = Depends(get_db)):
+    # cur.execute("""SELECT * FROM posts WHERE id = %s""", (str(id),))
+    # post = cur.fetchone()
+    post = db.query(models.Post).filter(models.Post.id  == id).first()
+    print(post)
     if not post:
         # when the resource is not found
         # 404: Not Found
@@ -141,37 +154,45 @@ def get_posts(id:int):
 
 
 @app.delete("/posts/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(id:int):
+def delete_post(id:int, db: Session = Depends(get_db)):
 
-    cur.execute("""DELETE FROM posts WHERE id = %s RETURNING *""", (str(id),))
-    deleted_post = cur.fetchone()
-    # anytime, we change a database. commit to it.
-    print(deleted_post)
-    conn.commit()
+    # cur.execute("""DELETE FROM posts WHERE id = %s RETURNING *""", (str(id),))
+    # deleted_post = cur.fetchone()
+    # # anytime, we change a database. commit to it.
+    # print(deleted_post)
+    # conn.commit()
+    post = db.query(models.Post).filter(models.Post.id == id)
     
-    if not deleted_post:
+    if not post.first():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                              detail=f"post with id: {id} does not exist")
+    # if the post exist
+    post.delete(synchronize_session=False)
+    db.commit()
     
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # we are almost done with all our crud operations
 @app.put("/posts/{id}")
-def update_post(id: int, post: Post):
+def update_post(id: int, post: Post, db: Session = Depends(get_db)):
 
-    cur.execute("""UPDATE posts SET title = %s, content = %s, published = %s WHERE id = %s RETURNING *""", 
-                (post.title, post.content, post.published, str(id)))
+    # cur.execute("""UPDATE posts SET title = %s, content = %s, published = %s WHERE id = %s RETURNING *""", 
+    #             (post.title, post.content, post.published, str(id)))
     
-    updated_post = cur.fetchone()
-    print(updated_post)
-    conn.commit()
-    
+    # updated_post = cur.fetchone()
+    # print(updated_post)
+    # conn.commit()
+    post_query = db.query(models.Post).filter(models.Post.id == id)
+    updated_post  = post_query.first()
+
     if updated_post == None:
         # you raise exceptins, not return them
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                              detail="Post Index not found")
+    post_query.update(post.model_dump(), synchronize_session=False)
+    db.commit()
     
-    return {"data": updated_post}
+    return {"data": post_query.first()}
 
 # we are now at the end of our crud operation.
