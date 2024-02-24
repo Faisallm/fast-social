@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Response, status \
-    , HTTPException  
+    , HTTPException, Depends
 from fastapi.params import Body
 from pydantic import BaseModel
 from typing import Optional
@@ -7,8 +7,16 @@ from random import randrange
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
+from . import  models
+from .database import engine, get_db
+from sqlalchemy.orm import Session
+
+
+# connecting the sqlachemy models and our pg database
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
 
 # model/schema/blueprint/definition
 # we will be validating our user's input...
@@ -23,6 +31,8 @@ class Post(BaseModel):
     #  fully optional field
 
 # code for connecting to db
+# previous code for connecting when using pure sql...
+# with no sqlalchemy
 while True:
     try:
         # connecting to a postgres db
@@ -42,7 +52,7 @@ while True:
         # wait for 2 seconds before trying to reconnect
         time.sleep(2)
 
-
+# in-memory database
 my_posts = [{"title": "Machine Learning", "content":  "Is a set of tools that tries to  \
              automate the intellectual tasks performed by humans", "id": 1},
              {'title': "Deep Learning", "content": "Is a subset of tools under machine \
@@ -67,6 +77,12 @@ def root():
     # the return msg is converted to json...
     # and then gets sent back to the user
     return {'message': "Welcome to my API!!"}
+
+
+@app.get('/sqlalchemy')
+def test_posts(db: Session = Depends(get_db)):
+    return {"status": "success"}
+
 
 
 @app.get('/posts')
@@ -139,9 +155,11 @@ def delete_post(id:int):
 @app.put("/posts/{id}")
 def update_post(id: int, post: Post):
 
-    cur.execute("""UPDATE posts SET title = %s, content = %s, published = %s RETURNING *""", 
-                (post.title, post.content, post.published))
+    cur.execute("""UPDATE posts SET title = %s, content = %s, published = %s WHERE id = %s RETURNING *""", 
+                (post.title, post.content, post.published, str(id)))
+    
     updated_post = cur.fetchone()
+    print(updated_post)
     conn.commit()
     
     if updated_post == None:
