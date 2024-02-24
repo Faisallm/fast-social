@@ -81,15 +81,20 @@ def root():
 
 @app.get('/sqlalchemy')
 def test_posts(db: Session = Depends(get_db)):
-    return {"status": "success"}
+    # making a query to our post table.
+    # it will grab all the post query within our table.
+    # this query method is running sql at the background.
+    posts = db.query(models.Post).all()
+    print(posts)
+    return {"data": 'successful'}
 
 
 
 @app.get('/posts')
-def get_posts():
-    cur.execute("""SELECT * FROM posts""")
-    posts = cur.fetchall()
-    print(posts)
+def get_posts(db: Session = Depends(get_db)):
+    # cur.execute("""SELECT * FROM posts""")
+    # posts = cur.fetchall()
+    posts = db.query(models.Post).all()
     return {'data': posts}
 
 
