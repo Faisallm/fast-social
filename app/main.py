@@ -1,13 +1,12 @@
 from fastapi import FastAPI, Response, status \
     , HTTPException, Depends
 from fastapi.params import Body
-from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from random import randrange
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
-from . import  models
+from . import  models, schemas, utils
 from .database import engine, get_db
 from sqlalchemy.orm import Session
 
@@ -17,20 +16,6 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# pydantic is used for validating...
-# users input.
-
-# model/schema/blueprint/definition
-# we will be validating our user's input...
-# data with this.
-class Post(BaseModel):
-    title: str
-    content: str
-    # default value of published
-    # this is an optional field...
-    # with a default value in schema
-    published: bool = True
-    #  fully optional field
 
 # code for connecting to db
 # previous code for connecting when using pure sql...
@@ -81,29 +66,18 @@ def root():
     return {'message': "Welcome to my API!!"}
 
 
-@app.get('/sqlalchemy')
-def test_posts(db: Session = Depends(get_db)):
-    # making a query to our post table.
-    # it will grab all the post query within our table.
-    # this query method is running sql at the background.
-    posts = db.query(models.Post).all()
-    print(posts)
-    return {"data": 'successful'}
-
-
-
-@app.get('/posts')
+@app.get('/posts', response_model=List[schemas.Post])
 def get_posts(db: Session = Depends(get_db)):
     # cur.execute("""SELECT * FROM posts""")
     # posts = cur.fetchall()
     posts = db.query(models.Post).all()
-    return {'data': posts}
+    return posts
 
 
 # if we want to change the default status code...
 # we can add a status_code argument to the decorator...
-@app.post('/posts', status_code=status.HTTP_201_CREATED)
-def create_posts(post: Post, db: Session = Depends(get_db)):
+@app.post('/posts', status_code=status.HTTP_201_CREATED, response_model=schemas.Post)
+def create_posts(post: schemas.PostCreate, db: Session = Depends(get_db)):
     # inserting a new post in our sql database.
     # %s allows for input sanitization.
     # to prevent sql injection into our database.
@@ -124,14 +98,14 @@ def create_posts(post: Post, db: Session = Depends(get_db)):
     # similar to RETURNING *
     db.refresh(new_post)
     
-    return {'data': new_post}
+    return new_post
 
 
 # we converted the id to an int in the parameters.
 # it's also a way of making  sure that the provided...
 # id is an integer.
-@app.get('/posts/{id}')
-def get_posts(id:int, db: Session = Depends(get_db)):
+@app.get('/posts/{id}', response_model=schemas.Post)
+def get_post(id:int, db: Session = Depends(get_db)):
     # cur.execute("""SELECT * FROM posts WHERE id = %s""", (str(id),))
     # post = cur.fetchone()
     post = db.query(models.Post).filter(models.Post.id  == id).first()
@@ -150,7 +124,7 @@ def get_posts(id:int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"post with id: {id} was not found")
     
-    return {"post_detail": post}
+    return post
 
 
 @app.delete("/posts/{id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -169,13 +143,13 @@ def delete_post(id:int, db: Session = Depends(get_db)):
     # if the post exist
     post.delete(synchronize_session=False)
     db.commit()
-    
+    # we don't return any data in the 'd' in crud:CRUD
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # we are almost done with all our crud operations
-@app.put("/posts/{id}")
-def update_post(id: int, post: Post, db: Session = Depends(get_db)):
+@app.put("/posts/{id}", response_model=schemas.Post)
+def update_post(id: int, post: schemas.PostCreate, db: Session = Depends(get_db)):
 
     # cur.execute("""UPDATE posts SET title = %s, content = %s, published = %s WHERE id = %s RETURNING *""", 
     #             (post.title, post.content, post.published, str(id)))
@@ -187,12 +161,39 @@ def update_post(id: int, post: Post, db: Session = Depends(get_db)):
     updated_post  = post_query.first()
 
     if updated_post == None:
-        # you raise exceptins, not return them
+        # you raise exceptions, not return them
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                              detail="Post Index not found")
     post_query.update(post.model_dump(), synchronize_session=False)
     db.commit()
     
-    return {"data": post_query.first()}
+    return post_query.first()
 
 # we are now at the end of our crud operation.
+
+@app.post("/users", status_code=status.HTTP_201_CREATED, response_model=schemas.UserResponse)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+
+    # hashing the user's password using passlib
+    user.password = utils.hash(user.password)
+    # unpacking values into the user model
+    new_user = models.User(**user.model_dump())
+    db.add(new_user)
+    db.commit()
+    # similar to returning *
+    db.refresh(new_user)
+
+    return new_user
+
+# the purpose of this function is when we want to get the profile etc
+@app.get('/users/{id}', response_model=schemas.UserResponse)
+def get_user(id:int, db: Session = Depends(get_db)):
+
+    user = db.query(models.User).filter(models.User.id == id).first()
+
+    if not user:
+
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                             detail=f"User with id: {id} not found!")
+    
+    return user

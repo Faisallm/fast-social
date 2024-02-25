@@ -20,4 +20,20 @@ class Post(Base):
     # timestamp with timezone
     # it can't be left blank
     # automatically set value
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text("now()"))
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, 
+                        server_default=text("now()"))
+
+
+class User(Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    # unique=True to prevent two emails registering twice.
+    email = Column(String, nullable=False, unique=True)
+    # we never store the actual password in our database...
+    # we need to hash it.
+    password = Column(String, nullable=False)
+
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False,
+                        server_default=text("now()"))
+
