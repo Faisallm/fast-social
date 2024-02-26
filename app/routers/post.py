@@ -4,7 +4,11 @@ from  .. import models, schemas
 from ..database import get_db
 from sqlalchemy.orm import Session
 
-router  = APIRouter()
+router  = APIRouter(
+    prefix="/posts",
+    # to differentiate between the models in our documentation
+    tags=["Posts"]
+)
 
 # in-memory database
 my_posts = [{"title": "Machine Learning", "content":  "Is a set of tools that tries to  \
@@ -26,7 +30,7 @@ def find_post_index(id):
             return i
 
 
-@router.get('/posts', response_model=List[schemas.Post])
+@router.get('/', response_model=List[schemas.Post])
 def get_posts(db: Session = Depends(get_db)):
     # cur.execute("""SELECT * FROM posts""")
     # posts = cur.fetchall()
@@ -36,7 +40,7 @@ def get_posts(db: Session = Depends(get_db)):
 
 # if we want to change the default status code...
 # we can add a status_code argument to the decorator...
-@router.post('/posts', status_code=status.HTTP_201_CREATED, response_model=schemas.Post)
+@router.post('/', status_code=status.HTTP_201_CREATED, response_model=schemas.Post)
 def create_posts(post: schemas.PostCreate, db: Session = Depends(get_db)):
     # inserting a new post in our sql database.
     # %s allows for input sanitization.
@@ -64,7 +68,7 @@ def create_posts(post: schemas.PostCreate, db: Session = Depends(get_db)):
 # we converted the id to an int in the parameters.
 # it's also a way of making  sure that the provided...
 # id is an integer.
-@router.get('/posts/{id}', response_model=schemas.Post)
+@router.get('/{id}', response_model=schemas.Post)
 def get_post(id:int, db: Session = Depends(get_db)):
     # cur.execute("""SELECT * FROM posts WHERE id = %s""", (str(id),))
     # post = cur.fetchone()
@@ -87,7 +91,7 @@ def get_post(id:int, db: Session = Depends(get_db)):
     return post
 
 
-@router.delete("/posts/{id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_post(id:int, db: Session = Depends(get_db)):
 
     # cur.execute("""DELETE FROM posts WHERE id = %s RETURNING *""", (str(id),))
@@ -108,7 +112,7 @@ def delete_post(id:int, db: Session = Depends(get_db)):
 
 
 # we are almost done with all our crud operations
-@router.put("/posts/{id}", response_model=schemas.Post)
+@router.put("/{id}", response_model=schemas.Post)
 def update_post(id: int, post: schemas.PostCreate, db: Session = Depends(get_db)):
 
     # cur.execute("""UPDATE posts SET title = %s, content = %s, published = %s WHERE id = %s RETURNING *""", 
