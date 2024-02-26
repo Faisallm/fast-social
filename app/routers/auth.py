@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status, HTTPException, Response
+from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from  .. import models, schemas, database, utils
+from  .. import models, schemas, database, utils, oauth2
 
 router = APIRouter(
     tags=['Authentication']
@@ -10,11 +11,13 @@ router = APIRouter(
 # ensures that data pushed in request...
 # and in response follow a valid structure
 @router.post("/login")
-def login(user_credentials: schemas.UserLogin, db: Session = Depends(database.get_db)):
+def login(user_credentials: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
     # trying to filter the user with...
     # the same email as requested
+
+    # OAuth2PasswordRequestForm returns the email as the username
     user = db.query(models.User)\
-        .filter(models.User.email == user_credentials.email).first()
+        .filter(models.User.email == user_credentials.username).first()
     
     if not user:
         # 
@@ -27,7 +30,8 @@ def login(user_credentials: schemas.UserLogin, db: Session = Depends(database.ge
                             details="Invalid credentials")
     
     # create a token (JWT token)
+    access_token = oauth2.create_access_token(data={"user_id": user.id})
 
-
-    # return a token
-    return {"token": "example token"}
+    # return a token.
+    # bearer refers to the type of token.
+    return {"access_token": access_token, "token_type": "bearer"}
